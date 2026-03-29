@@ -4,6 +4,8 @@ from app.database import create_scan, complete_scan, save_file, update_file_acti
 from app.database import supabase
 import time
 router = APIRouter()
+import uuid
+
 
 @router.websocket("/ws/agent/{device_id}")
 async def agent_ws(websocket: WebSocket, device_id: str):
@@ -14,13 +16,26 @@ async def agent_ws(websocket: WebSocket, device_id: str):
     try:
         while True:
             message = await websocket.receive_json()
+            print("🔥 FULL MESSAGE:", message)
             event = message.get("event")
+            print("🔥 RAW EVENT:", repr(event))
             #print("Event received")
             if event == "ping":
                 manager.last_seen[device_id] = time.time()
-            elif event == "SCAN_START":
-                user_id = get_user_by_device(device_id)
-                scan_id = create_scan(user_id, device_id)
+            elif event == "START_SCAN":
+                print("🔥 START_SCAN received in backend")
+                #print(" scan_id from frontend:", scan_id)
+                #user_id = get_user_by_device(device_id)
+                #scan_id = create_scan(user_id, device_id)
+                #scan_id = message.get("scan_id")
+                scan_id = str(uuid.uuid4())
+                print("SCAN_ID" , scan_id)
+                user_id = 1
+                device_id_db = 1
+                #layer = 1
+                #print("Creating scan in DB:" , scan_id)
+                create_scan(user_id, device_id_db, scan_id)
+                print("🔥 create_scan called successfully")
 
                 await manager.send_to_agent(device_id, {
                      "event": "SCAN_STARTED",
@@ -28,6 +43,7 @@ async def agent_ws(websocket: WebSocket, device_id: str):
                  })     
 
             elif event == "SCAN_PROGRESS":
+                print("Forwarding progress to frontend: ", message)
                 await manager.send_to_frontend(device_id, message)
 
             elif event == "FILE_RESULT":
@@ -39,18 +55,49 @@ async def agent_ws(websocket: WebSocket, device_id: str):
                     "infected_files": value.get("totalThreats", 0),
                     "clean_files": value.get("safe", 0),
                     "deleted_files": value.get("deletion", 0),
-                    "quaratined_files": value.get("quarantine", 0),
+                    "quarantined_files": value.get("quarantine", 0),
                     "malware_density": (
                         value.get("totalThreats", 0) /
                          max(1, value.get("totalThreats", 0) + value.get("safe", 0))
                     )
-                }).execute()         
- 
+                }).execute()    
 
+            elif event == "FILES_BATCH":
+                scan_id = message.get("scan_id")
+                files = message.get("files", [])
+
+                print(f"📂 Inserting {len(files)} files into DB")
+
+                for f in files:
+                    save_file(
+                        scan_id=scan_id,
+                        file_path=f.get("file_path"),
+                        file_name=f.get("file_name"),
+                        action=f.get("action"),
+                        file_score=f.get("severity"),  # ✅ correct field
+                        layer="layer1",
+                        quarantine_path=f.get("quarantined_path")
+                    )
+
+                # optional: forward to frontend
+                await manager.send_to_frontend(device_id, {
+                    "event": "FILES_BATCH",
+                    "files": files
+                })         
+ 
+            elif event == "FILE_COUNT":
+                await manager.send_to_frontend(device_id,message)
                 
 
             elif event == "SCAN_COMPLETED":
-                complete_scan(message.get("scan_id"))
+                #complete_scan(message.get("scan_id"))
+                #print("SACN_COMPLETED_MESSAGE:",message)
+                scan_id = message.get("scan_id")
+
+                if not scan_id:
+                    print("SKIPPING DB UPDATE: NO SCAN_ID")
+                else:    
+                    complete_scan(scan_id)
 
 
             elif event == "DELETE_CONFIRMED":

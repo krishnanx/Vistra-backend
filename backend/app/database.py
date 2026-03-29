@@ -36,15 +36,34 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 #     return scan_id
 
-def create_scan(user_id, device_id,layer):
-    scan_id = str(uuid.uuid4())
+# def create_scan(user_id, device_id,layer):
+#     scan_id = str(uuid.uuid4())
 
+#     try:
+#         response = supabase.table("scans").insert({
+#             "scan_id": scan_id,
+#             "user_id": user_id,
+#             "device_id": device_id,
+#             "layer": layer,
+#             "started_at": datetime.utcnow().isoformat(),
+#             "completed_at": None,
+#             "status": "running"
+#         }).execute()
+
+#         print("Supabase response:", response)
+
+#     except Exception as e:
+#         print("SUPABASE ERROR:", e)
+#         raise e
+
+#     return scan_id
+
+def create_scan(user_id, device_id, scan_id):
     try:
         response = supabase.table("scans").insert({
             "scan_id": scan_id,
             "user_id": user_id,
             "device_id": device_id,
-            "layer": layer,
             "started_at": datetime.utcnow().isoformat(),
             "completed_at": None,
             "status": "running"
@@ -70,20 +89,24 @@ def complete_scan(scan_id):
 # FILES
 # =========================
 
-def save_file(scan_id, file_path, is_malicious, layer):
-    file_id = str(uuid.uuid4())
-
+def save_file(
+    scan_id,
+    file_path,
+    file_name,
+    action,
+    file_score,
+    layer,
+    quarantine_path=None
+):
     supabase.table("files").insert({
-        "file_id": file_id,
         "scan_id": scan_id,
         "file_path": file_path,
-        "is_malicious": is_malicious,
-        "action": None,
-        "layer": layer
+        "file_name": file_name,
+        "action": action,
+        "file_score": file_score,
+        "layer": layer,
+        "quarantine_path": quarantine_path
     }).execute()
-
-    return file_id
-
 
 def update_file_action(file_id, action):
     supabase.table("files").update({
